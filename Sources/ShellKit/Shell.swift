@@ -8,6 +8,7 @@
 
 import Foundation
 import Dispatch
+import Combine
 
 #if os(macOS)
 private extension FileHandle {
@@ -108,7 +109,8 @@ open class Shell {
      
         - Parameters:
             - command: The command to be executed
-     
+            - timeout: A timeout (in seconds) to apply to the command. If the timeout is triggered, the command is terminated.
+
         - Throws:
             `Shell.Error.outputData` if the command execution succeeded but the output is empty,
             otherwise `Shell.Error.generic(Int, String)` where the first parameter is the exit code,
@@ -117,7 +119,7 @@ open class Shell {
         - Returns: The output string of the command without trailing newlines
      */
     @discardableResult
-    public func run(_ command: String) throws -> String {
+    public func run(_ command: String, timeout: TimeInterval? = nil) throws -> String {
         let process = Process()
         process.launchPath = self.type
         process.arguments = ["-c", command]
@@ -154,6 +156,22 @@ open class Shell {
         }
         #endif
         
+        #if os(macOS)
+        var timeoutHandler: AnyCancellable?
+        if let timeout = timeout, timeout > 0 {
+            timeoutHandler = Timer.TimerPublisher(interval: timeout, runLoop: .main, mode: .common)
+                .autoconnect()
+                .sink { _ in
+                    _ = timeoutHandler
+                    timeoutHandler = nil
+
+                    if process.isRunning {
+                        process.terminate()
+                    }
+                }
+        }
+        #endif
+        
         process.launch()
         
         #if os(Linux)
@@ -165,6 +183,11 @@ open class Shell {
         
         process.waitUntilExit()
 
+        #if os(macOS)
+        timeoutHandler?.cancel()
+        timeoutHandler = nil
+        #endif
+        
         #if os(macOS)
         self.outputHandler?.end()
         self.errorHandler?.end()
@@ -193,15 +216,16 @@ open class Shell {
      
         - Parameters:
             - command: The command to be executed
+            - timeout: A timeout (in seconds) to apply to the command. If the timeout is triggered, the command is terminated.
             - completion: The completion block with the output and error
 
         The command will be executed on a concurrent dispatch queue.
      */
-    public func run(_ command: String, completion: @escaping ((String?, Swift.Error?) -> Void)) {
+    public func run(_ command: String, timeout: TimeInterval? = nil, completion: @escaping ((String?, Swift.Error?) -> Void)) {
         let queue = DispatchQueue(label: "shellkit.process.queue", attributes: .concurrent)
         queue.async {
             do {
-                let output = try self.run(command)
+                let output = try self.run(command, timeout: timeout)
                 completion(output, nil)
             }
             catch {
