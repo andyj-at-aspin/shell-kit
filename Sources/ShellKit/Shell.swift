@@ -104,6 +104,14 @@ open class Shell {
         self.env = env
     }
 
+    private var currentProcess: Process?
+    
+    public func terminate() {
+        if let process = currentProcess, process.isRunning {
+            process.terminate()
+        }
+    }
+    
     /**
         Runs a specific command through the current shell.
      
@@ -121,6 +129,8 @@ open class Shell {
     @discardableResult
     public func run(_ command: String, timeout: TimeInterval? = nil) throws -> String {
         let process = Process()
+        currentProcess = process
+        
         process.launchPath = self.type
         process.arguments = ["-c", command]
         
@@ -197,6 +207,9 @@ open class Shell {
         #endif
         
         return try self.lockQueue.sync {
+            defer {
+                self.currentProcess = nil
+            }
             guard process.terminationStatus == 0 else {
                 var message = "Unknown error"
                 if let error = String(data: errorData, encoding: .utf8) {
