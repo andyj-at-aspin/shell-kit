@@ -133,14 +133,14 @@ open class Shell {
         
         process.launchPath = self.type
         process.arguments = ["-c", command]
-        
-        if !self.env.isEmpty {
-            process.environment = ProcessInfo.processInfo.environment
-            self.env.forEach { variable in
-                if variable.key == "OS_ACTIVITY_DT_MODE" { return }
-                process.environment?[variable.key] = variable.value
-            }
+        process.environment = ProcessInfo.processInfo.environment
+
+        self.env.forEach { variable in
+            process.environment?[variable.key] = variable.value
         }
+
+        // Ensure that OS_ACTIVITY_DT_MODE is not passed as an environment key
+        process.environment?["OS_ACTIVITY_DT_MODE"] = nil
 
         var outputData = Data()
         let outputPipe = Pipe()
