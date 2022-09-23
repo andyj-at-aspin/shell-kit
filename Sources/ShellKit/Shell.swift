@@ -137,6 +137,7 @@ open class Shell {
         if !self.env.isEmpty {
             process.environment = ProcessInfo.processInfo.environment
             self.env.forEach { variable in
+                if variable.key == "OS_ACTIVITY_DT_MODE" { return }
                 process.environment?[variable.key] = variable.value
             }
         }
