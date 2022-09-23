@@ -140,6 +140,8 @@ open class Shell {
         }
 
         // Ensure that OS_ACTIVITY_DT_MODE is not passed as an environment key
+        // Action copied from https://stackoverflow.com/questions/67595371/swift-package-calling-usr-bin-swift-errors-with-failed-to-open-macho-file-to
+        // which was also suffering 'macho' symbolic link level messages
         process.environment?["OS_ACTIVITY_DT_MODE"] = nil
 
         var outputData = Data()
