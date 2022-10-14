@@ -105,9 +105,10 @@ open class Shell {
     }
 
     private var currentProcess: Process?
+    private var isLaunched = false
     
     public func terminate() {
-        if let process = currentProcess, process.isRunning {
+        if let process = currentProcess, isLaunched {
             process.terminate()
         }
     }
@@ -168,25 +169,30 @@ open class Shell {
             }
         }
         #endif
+                
+        process.launch()
+        
+        isLaunched = true
         
         #if os(macOS)
         var timeoutHandler: AnyCancellable?
         if let timeout = timeout, timeout > 0 {
-            timeoutHandler = Timer.TimerPublisher(interval: timeout, runLoop: .main, mode: .common)
+            let processStart = Date.init()
+            timeoutHandler = Timer.TimerPublisher(interval: 60, runLoop: .main, mode: .common)
                 .autoconnect()
-                .sink { _ in
-                    _ = timeoutHandler
-                    timeoutHandler = nil
+                .sink { publishedTime in
+                    let now = publishedTime as Date
+                    if now.timeIntervalSince(processStart) > timeout {
+                        _ = timeoutHandler
+                        timeoutHandler = nil
 
-                    if process.isRunning {
+                        // We're post-launch. We can call this even if the process has terminated.
                         process.terminate()
                     }
                 }
         }
         #endif
-        
-        process.launch()
-        
+
         #if os(Linux)
         self.lockQueue.sync {
             outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
@@ -212,6 +218,7 @@ open class Shell {
         return try self.lockQueue.sync {
             defer {
                 self.currentProcess = nil
+                self.isLaunched = false
             }
             guard process.terminationStatus == 0 else {
                 var message = "Unknown error"
