@@ -50,6 +50,8 @@ final class ShellTests: XCTestCase {
                 XCTAssertNotEqual(code, 0, "Exit code should not be zero.")
             case .outputData:
                 self.invalid(error: error, expected: "Shell.Error.generic(Int, String)")
+            case .nserror(let error):
+                XCTFail("Internal error running process: \(error.localizedDescription)")
             }
         }
         catch {
@@ -100,6 +102,8 @@ final class ShellTests: XCTestCase {
                 self.assert(type: "message", result: handlerError.trimmingCharacters(in: .newlines), expected: message)
             case .outputData:
                 self.invalid(error: error, expected: "Shell.Error.generic(Int, String)")
+            case .nserror(let error):
+                XCTFail("Internal error running process: \(error.localizedDescription)")
             }
         }
         catch {

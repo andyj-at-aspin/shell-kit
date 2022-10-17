@@ -9,6 +9,7 @@
 import Foundation
 import Dispatch
 import Combine
+import NSTry
 
 #if os(macOS)
 private extension FileHandle {
@@ -62,6 +63,8 @@ open class Shell {
         case outputData
         // generic shell error, the first parameter is the error code, the second is the error message
         case generic(Int, String)
+        // Objective-C error thrown during shell execution
+        case nserror(Swift.Error)
         
         public var errorDescription: String? {
             switch self {
@@ -69,6 +72,8 @@ open class Shell {
                 return "Invalid or empty shell output."
             case .generic(let code, let message):
                 return message + " (code: \(code))"
+            case .nserror(let error):
+                return "Internal error running process: \(error.localizedDescription)"
             }
         }
     }
@@ -169,14 +174,22 @@ open class Shell {
             }
         }
         #endif
-                
-        process.launch()
+                 
+        // Catch Objective-C exceptions thrown when trying to start the process
+        var caughtNSError: Swift.Error?
+        do {
+            try NSTry.catchException {
+                process.launch()
+                self.isLaunched = true
+            }
+        } catch {
+            caughtNSError = error
+        }
         
-        isLaunched = true
         
         #if os(macOS)
         var timeoutHandler: AnyCancellable?
-        if let timeout = timeout, timeout > 0 {
+        if isLaunched, let timeout = timeout, timeout > 0 {
             let processStart = Date.init()
             timeoutHandler = Timer.TimerPublisher(interval: 60, runLoop: .main, mode: .common)
                 .autoconnect()
@@ -194,13 +207,23 @@ open class Shell {
         #endif
 
         #if os(Linux)
-        self.lockQueue.sync {
-            outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        if isLaunched {
+            self.lockQueue.sync {
+                outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            }
         }
         #endif
         
-        process.waitUntilExit()
+        if isLaunched {
+            do {
+                try NSTry.catchException {
+                    process.waitUntilExit()
+                }
+            } catch {
+                caughtNSError = error
+            }
+        }
 
         #if os(macOS)
         timeoutHandler?.cancel()
@@ -219,6 +242,9 @@ open class Shell {
             defer {
                 self.currentProcess = nil
                 self.isLaunched = false
+            }
+            if let caughtNSError = caughtNSError {
+                throw Error.nserror(caughtNSError)
             }
             guard process.terminationStatus == 0 else {
                 var message = "Unknown error"
