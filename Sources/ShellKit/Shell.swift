@@ -183,6 +183,7 @@ open class Shell {
                 self.isLaunched = true
             }
         } catch {
+            print("NSTry error detected", "process.launch()", error.localizedDescription)
             caughtNSError = error
         }
         
@@ -195,10 +196,13 @@ open class Shell {
                 .autoconnect()
                 .sink { publishedTime in
                     let now = publishedTime as Date
-                    if now.timeIntervalSince(processStart) > timeout {
+                    let duration = now.timeIntervalSince(processStart)
+                    if duration > timeout {
                         _ = timeoutHandler
                         timeoutHandler = nil
 
+                        print("Timeout (process running for \(Int(duration))s with timeout of \(Int(timeout))s)")
+                        
                         // We're post-launch. We can call this even if the process has terminated.
                         process.terminate()
                     }
@@ -221,6 +225,8 @@ open class Shell {
                     process.waitUntilExit()
                 }
             } catch {
+                print("NSTry error detected", "process.waitUntilExit()", error.localizedDescription)
+                
                 caughtNSError = error
             }
         }
@@ -238,6 +244,17 @@ open class Shell {
         errorPipe.fileHandleForReading.readabilityHandler = nil
         #endif
         
+        var terminationStatus: Int32 = -1
+        do {
+            try NSTry.catchException {
+                terminationStatus = process.terminationStatus
+            }
+        } catch {
+            print("NSTry error detected", "process.terminationStatus", error.localizedDescription)
+            
+            caughtNSError = error
+        }
+        
         return try self.lockQueue.sync {
             defer {
                 self.currentProcess = nil
@@ -246,12 +263,12 @@ open class Shell {
             if let caughtNSError = caughtNSError {
                 throw Error.nserror(caughtNSError)
             }
-            guard process.terminationStatus == 0 else {
+            guard terminationStatus == 0 else {
                 var message = "Unknown error"
                 if let error = String(data: errorData, encoding: .utf8) {
                     message = error.trimmingCharacters(in: .newlines)
                 }
-                throw Error.generic(Int(process.terminationStatus), message)
+                throw Error.generic(Int(terminationStatus), message)
             }
             guard let output = String(data: outputData, encoding: .utf8) else {
                 throw Error.outputData
