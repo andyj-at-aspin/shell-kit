@@ -46,7 +46,7 @@ final class ShellTests: XCTestCase {
                         expected: "/bin/sh: line 0: cd: /invalid-directory: No such file or directory (code: 1)")
 
             switch error {
-            case .generic(let code, _):
+            case .generic(let code, _, _):
                 XCTAssertNotEqual(code, 0, "Exit code should not be zero.")
             case .outputData:
                 self.invalid(error: error, expected: "Shell.Error.generic(Int, String)")
@@ -93,7 +93,7 @@ final class ShellTests: XCTestCase {
         }
         catch let error as Shell.Error {
             switch error {
-            case .generic(let code, let message):
+            case .generic(let code, let message, _):
                 let handlerData = pipe.fileHandleForReading.readDataToEndOfFile()
                 guard let handlerError = String(data: handlerData, encoding: .utf8) else {
                     return XCTFail("Empty handler output, expected valid error message.")

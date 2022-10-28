@@ -61,8 +61,8 @@ open class Shell {
     public enum Error: LocalizedError {
         // invalid shell output data error
         case outputData
-        // generic shell error, the first parameter is the error code, the second is the error message
-        case generic(Int, String)
+        // generic shell error, the first parameter is the error code, the second is the error message, the third indicates there was a timeout
+        case generic(Int, String, Bool)
         // Objective-C error thrown during shell execution
         case nserror(Swift.Error)
         
@@ -70,8 +70,15 @@ open class Shell {
             switch self {
             case .outputData:
                 return "Invalid or empty shell output."
-            case .generic(let code, let message):
-                return message + " (code: \(code))"
+            case .generic(let code, let message, let timedOut):
+                if code == 15 {
+                    if timedOut {
+                        return "Process exceeded permitted duration and was automatically terminated."
+                    } else {
+                        return "Process was terminated by external instruction"
+                    }
+                }
+                return [message.trimmed.nilEmpty, "(code: \(code))"].compactMap { $0 }.joined(separator: " ")
             case .nserror(let error):
                 return "Internal error running process: \(error.localizedDescription)"
             }
@@ -111,6 +118,7 @@ open class Shell {
 
     private var currentProcess: Process?
     private var isLaunched = false
+    private var didTimeOut = false
     
     public func terminate() {
         if let process = currentProcess, isLaunched {
@@ -127,8 +135,8 @@ open class Shell {
 
         - Throws:
             `Shell.Error.outputData` if the command execution succeeded but the output is empty,
-            otherwise `Shell.Error.generic(Int, String)` where the first parameter is the exit code,
-            the second is the error message
+            otherwise `Shell.Error.generic(Int, String, Bool)` where the first parameter is the exit code,
+            the second is the error message and the thord indicates the process timed out
      
         - Returns: The output string of the command without trailing newlines
      */
@@ -204,6 +212,7 @@ open class Shell {
                         print("Timeout (process running for \(Int(duration))s with timeout of \(Int(timeout))s)")
                         
                         // We're post-launch. We can call this even if the process has terminated.
+                        self.didTimeOut = true
                         process.terminate()
                     }
                 }
@@ -268,7 +277,7 @@ open class Shell {
                 if let error = String(data: errorData, encoding: .utf8) {
                     message = error.trimmingCharacters(in: .newlines)
                 }
-                throw Error.generic(Int(terminationStatus), message)
+                throw Error.generic(Int(terminationStatus), message, didTimeOut)
             }
             guard let output = String(data: outputData, encoding: .utf8) else {
                 throw Error.outputData
@@ -298,5 +307,15 @@ open class Shell {
                 completion(nil, error)
             }
         }
+    }
+}
+
+private extension String {
+    var trimmed: String {
+        self.trimmingCharacters(in: .whitespaces)
+    }
+    
+    var nilEmpty: String? {
+        self.isEmpty ? nil : self
     }
 }
